@@ -1,0 +1,208 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
+import pyttsx3
+import pickle
+
+# 1. WAKE UP THE AI: Load the trained Brain when the server starts
+with open('ai_model.pkl', 'rb') as file:
+    ai_brain = pickle.load(file)
+
+app = FastAPI(title="Dementia App AI Engine")
+
+# --- SMART GAME DIFFICULTY LOGIC (NOW USING ML) ---
+class GameSession(BaseModel):
+    reaction_time: float
+    mistakes: int
+    current_level: int
+
+@app.post("/get_next_difficulty")
+def calculate_difficulty(data: GameSession):
+    # Package the patient's stats in the exact order the AI studied them:
+    # [current_level, reaction_time, mistakes]
+    patient_stats = [[data.current_level, data.reaction_time, data.mistakes]]
+    
+    # Ask the AI Brain to predict the best next level based on its training
+    predicted_level_array = ai_brain.predict(patient_stats)
+    next_level = int(predicted_level_array[0]) # Extract the number from the AI's answer
+    
+    # Generate a simple reason for the dashboard
+    if next_level > data.current_level:
+        reason = "AI recognized an 'easy' pattern. Increasing level."
+    elif next_level < data.current_level:
+        reason = "AI recognized a 'struggle' pattern. Decreasing level."
+    else:
+        reason = "AI recognized a 'perfect' pattern. Keeping level."
+        
+    return {"new_difficulty_level": next_level, "ai_reasoning": reason}
+
+# --- OFFLINE VOICE LOGIC (UNCHANGED) ---
+class VoicePrompt(BaseModel):
+    text_to_speak: str
+
+@app.post("/speak_reminder")
+def speak_text(prompt: VoicePrompt):
+    engine = pyttsx3.init()
+    engine.setProperty('rate', 140) 
+    engine.say(prompt.text_to_speak)
+    engine.runAndWait()
+    engine.stop() 
+    
+    return {"status": "Success", "message": f"Spoke: {prompt.text_to_speak}"}
+
+# --- COGNITIVE HEALTH SCORING ---
+class PatientHistory(BaseModel):
+    patient_id: int
+    games_played_this_week: int
+    average_reaction_time: float
+    total_mistakes_this_week: int
+
+@app.post("/calculate_health_score")
+def get_cognitive_score(history: PatientHistory):
+    # A simple baseline scoring algorithm (100 is perfect health)
+    base_score = 100
+    
+    # Deduct points for slow average reaction times and frequent mistakes
+    time_penalty = max(0, (history.average_reaction_time - 3.5) * 5)
+    mistake_penalty = history.total_mistakes_this_week * 2
+    
+    final_score = max(0, base_score - time_penalty - mistake_penalty)
+    
+    # Determine the clinical alert level
+    if final_score >= 85:
+        status = "Stable"
+    elif final_score >= 60:
+        status = "Mild Decline - Monitor"
+    else:
+        status = "Significant Decline - Alert Doctor"
+        
+    return {
+        "cognitive_health_score": round(final_score, 1),
+        "clinical_status": status
+    }
+
+# Bhashini API Credentials
+import os
+BHASHINI_USER_ID = os.getenv("BHASHINI_USER_ID", "")
+BHASHINI_API_KEY = os.getenv("BHASHINI_API_KEY", "")
+BHASHINI_INFERENCE_KEY = os.getenv("BHASHINI_INFERENCE_KEY", "")
+BHASHINI_COMPUTE_URL = "https://dhruva-api.bhashini.gov.in/services/inference/pipeline"
+
+# --- REGIONAL LANGUAGE VOICE ENGINE ---
+class RegionalPrompt(BaseModel):
+    text_to_speak: str
+    target_language: str  # e.g., "hi" (Hindi), "bn" (Bengali), "en" (English)
+
+# Fallback offline dictionary for essential dementia reminders
+OFFLINE_TRANSLATIONS = {
+    "hi": {
+        "take your medicine": "कृपया अपनी दवाई लें",
+        "drink water": "कृपया पानी पीजिए",
+        "time to sleep": "सोने का समय हो गया है"
+    },
+    "bn": {
+        "take your medicine": "আপনার ওষুধ খাওয়ার সময় হয়েছে",
+        "drink water": "জল খেয়ে নিন",
+        "time to sleep": "ঘুমানোর সময় হয়েছে"
+    }
+}
+
+@app.post("/speak_regional_reminder")
+def speak_regional_text(prompt: RegionalPrompt):
+    lang = prompt.target_language.lower()
+    original_text = prompt.text_to_speak.lower()
+    
+    # 1. Determine translated text (checks offline dictionary first)
+    translated_text = prompt.text_to_speak
+    if lang in OFFLINE_TRANSLATIONS and original_text in OFFLINE_TRANSLATIONS[lang]:
+        translated_text = OFFLINE_TRANSLATIONS[lang][original_text]
+        source = "Offline Regional Dictionary"
+    else:
+        try:
+            import requests
+            headers = {
+                "Content-Type": "application/json",
+                "userID": BHASHINI_USER_ID,
+                "ulcaApiKey": BHASHINI_API_KEY,
+                "Authorization": BHASHINI_INFERENCE_KEY
+            }
+            payload = {
+                "pipelineTasks": [{"taskType": "translation", "config": {"language": {"sourceLanguage": "en", "targetLanguage": lang}}}],
+                "inputData": {"input": [{"source": original_text}]}
+            }
+            
+            response = requests.post(BHASHINI_COMPUTE_URL, json=payload, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                translated_text = data["pipelineResponse"][0]["output"][0]["target"]
+                source = "Official Bhashini API (Live)"
+            else:
+                source = f"Bhashini Server Error: {response.status_code}"
+        except Exception as e:
+            print(f"Translation Error: {e}")
+    
+    # 2. Trigger audio playback
+    # engine = pyttsx3.init()
+    # engine.setProperty('rate', 135)  # Measured pace for elderly comprehension
+    # engine.say(translated_text)
+    # engine.runAndWait()
+    # engine.stop()
+    
+    return {
+        "original_text": prompt.text_to_speak,
+        "target_language": lang,
+        "spoken_text": translated_text,
+        "translation_engine": source
+    }
+
+
+@app.post("/synthesize_speech")
+def synthesize_speech(prompt: RegionalPrompt):
+    lang = prompt.target_language.lower()
+    original_text = prompt.text_to_speak.lower()
+    
+    try:
+        import requests
+        headers = {
+            "Content-Type": "application/json",
+            "userID": BHASHINI_USER_ID,
+            "ulcaApiKey": BHASHINI_API_KEY,
+            "Authorization": BHASHINI_INFERENCE_KEY
+        }
+        
+        # We chain TWO tasks: Translation first, then TTS
+        payload = {
+            "pipelineTasks": [
+                {
+                    "taskType": "translation", 
+                    "config": {"language": {"sourceLanguage": "en", "targetLanguage": lang}}
+                },
+                {
+                    "taskType": "tts", 
+                    "config": {"language": {"sourceLanguage": lang}, "gender": "female"}
+                }
+            ],
+            "inputData": {"input": [{"source": original_text}]}
+        }
+        
+        # Timeout increased to 10s because audio generation takes slightly longer
+        response = requests.post(BHASHINI_COMPUTE_URL, json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Extract both the text and the raw audio data
+            translated_text = data["pipelineResponse"][0]["output"][0]["target"]
+            audio_base64 = data["pipelineResponse"][1]["audio"][0]["audioContent"]
+            
+            return {
+                "original_text": original_text,
+                "target_language": lang,
+                "spoken_text": translated_text,
+                "audio_base64": audio_base64,
+                "engine": "Official Bhashini API (Live Voice)"
+            }
+        else:
+            return {"error": f"Bhashini API Error: {response.status_code}"}
+            
+    except Exception as e:
+        return {"error": f"Audio Request Failed: {str(e)}"}

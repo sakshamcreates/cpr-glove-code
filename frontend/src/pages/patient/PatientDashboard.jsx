@@ -1,0 +1,1042 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useApp } from '../../context/AppContext';
+import { speakLocalized, stopSpeech } from '../../utils/speechUtils';
+import { calculatePatientStreak } from '../../utils/streakUtils';
+import confetti from 'canvas-confetti';
+import { cognitiveGames } from '../../data/mockData';
+import PatientNavShell from '../../components/patient/PatientNavShell';
+import GameIcon from '../../components/common/GameIcon';
+import {
+  Play,
+  Bell,
+  Volume2, 
+  Flame, 
+  Check, 
+  Pill, 
+  Droplets, 
+  Footprints, 
+  Calendar, 
+  BrainCircuit, 
+  Clock, 
+  CheckCircle2, 
+  User, 
+  MapPin, 
+  AlertTriangle, 
+  ArrowRight,
+  Heart,
+  Utensils,
+  Moon,
+  Sparkles,
+  ShieldCheck,
+  MessageCircle,
+  Trees
+} from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { NORTHEAST_STATES, getRegionById } from '../../data/regionalData';
+
+export default function PatientDashboard() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { 
+    activePatient, 
+    toggleReminder, 
+    currentLanguage, 
+    isOnline,
+    pendingSyncCount,
+    loadGameSessions
+  } = useApp();
+
+  const [gameSessions, setGameSessions] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (activePatient?.id || activePatient?._id) {
+      if (typeof loadGameSessions === 'function') {
+        loadGameSessions(activePatient.id || activePatient._id).then(sessions => {
+          if (isMounted && Array.isArray(sessions)) {
+            setGameSessions(sessions);
+          }
+        });
+      }
+    }
+    return () => { isMounted = false; };
+  }, [activePatient, loadGameSessions]);
+
+  const dynamicStreakDays = useMemo(() => {
+    const isDemo = activePatient?.isDemoSeed === true || 
+      ['pat-1', 'pat-2', 'pat-3'].includes(activePatient?.id) || 
+      ['Ramesh Sharma', 'Meera Baruah', 'Biren Das'].includes(activePatient?.name);
+
+    if (isDemo) return activePatient?.streakDays || 14;
+    return calculatePatientStreak(activePatient, gameSessions, activePatient?.todayReminders || []);
+  }, [activePatient, gameSessions]);
+
+  // Check if patient has played any game today
+  const isTodayGameDone = useMemo(() => {
+    const now = new Date();
+    const todayYMD = now.toISOString().slice(0, 10);
+    
+    // 1. Check in fetched game sessions from MongoDB / state
+    const hasSessionToday = Array.isArray(gameSessions) && gameSessions.some(session => {
+      const dateVal = session.timestamp || session.createdAt || session.date;
+      if (!dateVal) return false;
+      const sDate = new Date(dateVal);
+      return (
+        sDate.getFullYear() === now.getFullYear() &&
+        sDate.getMonth() === now.getMonth() &&
+        sDate.getDate() === now.getDate()
+      );
+    });
+
+    if (hasSessionToday) return true;
+
+    // 2. Check localStorage key for instant offline & optimistic updates
+    try {
+      const patKey = activePatient?.id || activePatient?._id || 'guest';
+      const localDate = localStorage.getItem(`manomitra_game_played_date_${patKey}`);
+      if (localDate === todayYMD) return true;
+    } catch (e) {}
+
+    return false;
+  }, [gameSessions, activePatient]);
+
+  const isHindi = useMemo(() => {
+    return (currentLanguage?.code || '').startsWith('hi');
+  }, [currentLanguage]);
+  const [nowTime, setNowTime] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNowTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Regional State Personalization (Seven Sisters + Sikkim)
+  const [selectedStateId, setSelectedStateId] = useState(() => {
+    return localStorage.getItem('manomitra_patient_state') || 'assam';
+  });
+
+  const currentRegion = useMemo(() => getRegionById(selectedStateId), [selectedStateId]);
+
+  useEffect(() => {
+    if (activePatient?.location || activePatient?.nativeLanguage) {
+      const loc = (activePatient.location || '').toLowerCase();
+      const lang = (activePatient.nativeLanguage || '').toLowerCase();
+      let targetState = 'assam';
+      if (loc.includes('meghalaya') || loc.includes('shillong') || lang.includes('khasi') || lang.includes('garo')) {
+        targetState = 'meghalaya';
+      } else if (loc.includes('assam') || loc.includes('guwahati') || lang.includes('assamese') || lang.includes('bodo')) {
+        targetState = 'assam';
+      } else if (loc.includes('manipur') || loc.includes('imphal') || lang.includes('manipuri') || lang.includes('meitei')) {
+        targetState = 'manipur';
+      } else if (loc.includes('mizoram') || loc.includes('aizawl') || lang.includes('mizo')) {
+        targetState = 'mizoram';
+      } else if (loc.includes('nagaland') || loc.includes('kohima') || lang.includes('nagamese') || lang.includes('ao')) {
+        targetState = 'nagaland';
+      } else if (loc.includes('tripura') || loc.includes('agartala') || lang.includes('kokborok')) {
+        targetState = 'tripura';
+      } else if (loc.includes('arunachal') || loc.includes('itanagar')) {
+        targetState = 'arunachal';
+      } else if (loc.includes('sikkim') || loc.includes('gangtok') || lang.includes('nepali')) {
+        targetState = 'sikkim';
+      }
+      setSelectedStateId(targetState);
+      localStorage.setItem('manomitra_patient_state', targetState);
+    }
+  }, [activePatient]);
+
+  useEffect(() => {
+    const handleStateChange = () => {
+      const stored = localStorage.getItem('manomitra_patient_state');
+      if (stored && stored !== selectedStateId) {
+        setSelectedStateId(stored);
+      }
+    };
+    window.addEventListener('manomitra_state_changed', handleStateChange);
+    return () => window.removeEventListener('manomitra_state_changed', handleStateChange);
+  }, [selectedStateId]);
+
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [audioMessage, setAudioMessage] = useState('');
+
+  // Time-aware greeting
+  const greetingWord = useMemo(() => {
+    const hour = nowTime.getHours();
+    if (hour < 12) return t('dashboard.goodMorning', 'Good Morning');
+    if (hour < 17) return t('dashboard.goodAfternoon', 'Good Afternoon');
+    return t('dashboard.goodEvening', 'Good Evening');
+  }, [nowTime, t]);
+
+  const speakText = (text, isAutoPlay = false) => {
+    setAudioMessage(text);
+    speakLocalized({
+      text,
+      langCode: currentLanguage?.code || 'en',
+      rate: 0.85,
+      pitch: 1.0,
+      isAutoPlay,
+      patientId: activePatient?.id || activePatient?._id,
+      onStart: () => setIsPlayingAudio(true),
+      onEnd: () => setIsPlayingAudio(false),
+      onError: () => setIsPlayingAudio(false)
+    });
+  };
+
+  const [completingReminderId, setCompletingReminderId] = useState(null);
+
+  // Helper to parse reminder scheduled time into today's Date object (anchored to current day)
+  const parseReminderTime = (rem, baseDate = nowTime) => {
+    const today = new Date(baseDate);
+    let hours = 9;
+    let minutes = 0;
+
+    if (rem.scheduledTime) {
+      const d = new Date(rem.scheduledTime);
+      if (!isNaN(d.getTime())) {
+        hours = d.getHours();
+        minutes = d.getMinutes();
+        const res = new Date(today);
+        res.setHours(hours, minutes, 0, 0);
+        return res;
+      }
+    }
+    if (rem.time) {
+      const match = rem.time.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+      if (match) {
+        hours = parseInt(match[1], 10);
+        minutes = parseInt(match[2], 10);
+        const period = match[3]?.toUpperCase();
+        if (period === 'PM' && hours < 12) hours += 12;
+        if (period === 'AM' && hours === 12) hours = 0;
+        const res = new Date(today);
+        res.setHours(hours, minutes, 0, 0);
+        return res;
+      }
+    }
+    const res = new Date(today);
+    res.setHours(hours, minutes, 0, 0);
+    return res;
+  };
+
+  const getReminderIcon = (type, className = "w-8 h-8") => {
+    switch (type) {
+      case 'medicine': return <Pill className={className} />;
+      case 'hydration': return <Droplets className={className} />;
+      case 'meal': return <Utensils className={className} />;
+      case 'game': return <BrainCircuit className={className} />;
+      case 'activity': return <Footprints className={className} />;
+      case 'appointment': return <Calendar className={className} />;
+      case 'rest': return <Moon className={className} />;
+      default: return <Clock className={className} />;
+    }
+  };
+
+  // Configurable auto-escalation threshold for stale unacknowledged reminders (3 hours = 180 mins)
+  const ESCALATION_THRESHOLD_MINUTES = 180;
+
+  // Process today's reminders with real-time time states and actionable flags
+  const chronologicalReminders = useMemo(() => {
+    const reminders = activePatient?.todayReminders || [];
+    
+    return reminders.map(rem => {
+      const isCompleted = rem.status === 'completed' || rem.acknowledged === true;
+      const scheduledDate = parseReminderTime(rem, nowTime);
+      const diffMinutes = (nowTime.getTime() - scheduledDate.getTime()) / (1000 * 60);
+
+      // Rule 3: A reminder is actionable ONLY if current real time >= scheduled time (diffMinutes >= 0)
+      const isActionable = diffMinutes >= 0;
+
+      let timeState = 'upcoming';
+      if (isCompleted) {
+        timeState = 'completed';
+      } else if (diffMinutes < 0) {
+        // Scheduled in future (not actionable until time arrives)
+        timeState = 'upcoming';
+      } else if (diffMinutes >= 0 && diffMinutes <= 60) {
+        // Due right now (within 0 to 60 minutes window)
+        timeState = 'due_now';
+      } else if (diffMinutes > 60 && diffMinutes < ESCALATION_THRESHOLD_MINUTES) {
+        // Recent overdue (1 to 3 hours overdue)
+        timeState = 'overdue';
+      } else {
+        // Rule 1: 3+ hours unacknowledged -> auto-escalated to alert center
+        timeState = 'escalated_overdue';
+      }
+
+      return {
+        ...rem,
+        isCompleted,
+        isActionable,
+        scheduledDate,
+        diffMinutes,
+        timeState,
+        formattedTime: rem.time || scheduledDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+    }).sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime());
+  }, [activePatient?.todayReminders, nowTime]);
+
+    // Deterministic daily game pick based on day-of-year (same all day, changes tomorrow)
+  const dailyFeaturedGame = useMemo(() => {
+    const activePlayableGames = (cognitiveGames || []).filter(g => !g.isComingSoon);
+    if (activePlayableGames.length === 0) return null;
+    const now = new Date();
+    const startOfYear = new Date(now.getFullYear(), 0, 0);
+    const diff = now - startOfYear;
+    const oneDay = 1000 * 60 * 60 * 24;
+    const dayOfYear = Math.floor(diff / oneDay);
+    const gameIndex = dayOfYear % activePlayableGames.length;
+    return activePlayableGames[gameIndex];
+  }, []);
+
+  const completedCount = useMemo(() => {
+    return chronologicalReminders.filter(r => r.isCompleted).length;
+  }, [chronologicalReminders]);
+
+  const overdueCount = useMemo(() => {
+    return chronologicalReminders.filter(r => !r.isCompleted && (r.timeState === 'overdue' || r.timeState === 'escalated_overdue')).length;
+  }, [chronologicalReminders]);
+
+  const escalatedOverdueCount = useMemo(() => {
+    return chronologicalReminders.filter(r => !r.isCompleted && r.timeState === 'escalated_overdue').length;
+  }, [chronologicalReminders]);
+
+  const totalCount = chronologicalReminders.length || 10;
+
+  // Single primary focus routine on the dashboard spotlight (Strict Forward Progression)
+  const primaryFocusRoutine = useMemo(() => {
+    // 1. Filter pending routines, excluding the one currently in completion transition animation
+    const pending = chronologicalReminders.filter(
+      r => !r.isCompleted && r.id !== completingReminderId && r._id !== completingReminderId
+    );
+
+    console.log('⏰ [Manomitra Reminder Spotlight Calculation]', {
+      nowTime: nowTime.toLocaleTimeString(),
+      totalReminders: chronologicalReminders.length,
+      pendingCount: pending.length,
+      completingReminderId,
+      allReminders: chronologicalReminders.map(r => ({
+        id: r.id || r._id,
+        title: r.title,
+        time: r.formattedTime,
+        acknowledged: r.isCompleted,
+        timeState: r.timeState
+      }))
+    });
+
+    if (pending.length === 0) {
+      console.log('>>> [Spotlight Result]: All routines completed');
+      return { routine: null, priority: 'all_completed' };
+    }
+
+    // Priority 1: Routine due right now (in current 0 to 60 min window)
+    const dueNow = pending.find(r => r.timeState === 'due_now');
+    if (dueNow) {
+      console.log('>>> [Spotlight Result]: Selected Due Now ->', `[${dueNow.formattedTime}] ${dueNow.title} (Reason: Priority 1 - due_now active window)`);
+      return { routine: dueNow, priority: 'due_now' };
+    }
+
+    // Priority 2 (FORWARD PROGRESSION): Nearest upcoming reminder in chronological order
+    const upcoming = pending.filter(r => r.timeState === 'upcoming');
+    if (upcoming.length > 0) {
+      console.log('>>> [Spotlight Result]: Selected Forward Upcoming ->', `[${upcoming[0].formattedTime}] ${upcoming[0].title} (Reason: Priority 2 - forward progression to nearest upcoming)`);
+      return { routine: upcoming[0], priority: 'upcoming' };
+    }
+
+    // Priority 3: If no upcoming routines remain today, show the most recent overdue routine
+    const overdue = pending.filter(r => r.timeState === 'overdue' || r.timeState === 'escalated_overdue');
+    if (overdue.length > 0) {
+      const selectedOverdue = overdue[overdue.length - 1];
+      console.log('>>> [Spotlight Result]: Selected Overdue ->', `[${selectedOverdue.formattedTime}] ${selectedOverdue.title} (Reason: Priority 3 - no upcoming left, showing most recent overdue)`);
+      return { routine: selectedOverdue, priority: 'overdue' };
+    }
+
+    return { routine: null, priority: 'all_completed' };
+  }, [chronologicalReminders, completingReminderId, nowTime]);
+
+  const handleReminderDone = (remId, title) => {
+    const currentRem = (activePatient?.todayReminders || []).find(r => (r.id === remId || r._id === remId));
+    const wasCompleted = currentRem ? (currentRem.status === 'completed' || currentRem.acknowledged === true) : false;
+
+    setCompletingReminderId(remId);
+
+    // ONLY celebrate when transitioning from INCOMPLETE -> COMPLETED
+    if (!wasCompleted) {
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.7 },
+        colors: ['#1F6B4A', '#B5502E', '#2C5AA0']
+      });
+
+      const isHindi = (currentLanguage?.code || '').startsWith('hi');
+      speakText(isHindi ? `शानदार! आपने ${title} पूरा कर लिया।` : `Great job! You completed ${title}.`, true);
+    } else {
+      // Un-marking: immediately cancel any existing audio and play NO celebration
+      stopSpeech();
+    }
+    
+    toggleReminder(activePatient?.id || activePatient?._id, remId);
+
+    // Smoothly advance card forward to next recalculated routine
+    setTimeout(() => {
+      setCompletingReminderId(null);
+    }, 650);
+  };
+
+    const handleStatusAudio = () => {
+    const { routine, priority } = primaryFocusRoutine;
+    const name = (activePatient?.name || 'Elder').split(' ')[0];
+    const isHindi = (currentLanguage?.code || '').startsWith('hi');
+
+    if (isHindi) {
+      if (priority === 'all_completed') {
+        speakText(`नमस्ते ${name} जी! आज के सभी ${totalCount} दैनिक कार्य पूरे हो चुके हैं। आप पूरी तरह से अपडेट हैं!`);
+      } else if (priority === 'all_escalated') {
+        speakText(`नमस्ते ${name} जी! वर्तमान में कोई कार्य बाकी नहीं है। आपके कुछ पिछले कार्य शेड्यूल में उपलब्ध हैं।`);
+      } else if (priority === 'overdue') {
+        speakText(`${name} जी, आपका एक कार्य बाकी है: ${routine?.title}, जो ${routine?.formattedTime} पर निर्धारित था। कृपया इसे अभी पूरा करें।`);
+      } else if (priority === 'due_now') {
+        speakText(`${name} जी, अभी आपके ${routine?.title} का समय हो गया है, जो ${routine?.formattedTime} पर निर्धारित है।`);
+      } else {
+        speakText(`नमस्ते ${name} जी! आपका अगला निर्धारित कार्य ${routine?.title} है, जो ${routine?.formattedTime} पर है। आपने ${totalCount} में से ${completedCount} कार्य पूरे कर लिए हैं।`);
+      }
+    } else {
+      if (priority === 'all_completed') {
+        speakText(`${greetingWord}, ${name}! You are all caught up for today. All ${totalCount} daily routines are complete!`);
+      } else if (priority === 'all_escalated') {
+        speakText(`${greetingWord}, ${name}! You have no active routines due right now. You can review earlier routines in your schedule.`);
+      } else if (priority === 'overdue') {
+        speakText(`${name}, you have an overdue routine: ${routine?.title}, scheduled for ${routine?.formattedTime}. Please take care of this now.`);
+      } else if (priority === 'due_now') {
+        speakText(`${name}, it is time for: ${routine?.title} at ${routine?.formattedTime}.`);
+      } else {
+        speakText(`${greetingWord}, ${name}! Your next scheduled routine is ${routine?.title} at ${routine?.formattedTime}. You have completed ${completedCount} of ${totalCount} tasks.`);
+      }
+    }
+  };
+
+  return (
+    <PatientNavShell>
+      <div className="space-y-6">
+        
+        {/* Offline Banner */}
+        {!isOnline && (
+          <div className="p-4 rounded-2xl bg-[#FDF2F2] border border-[#F5B7B1] text-[#2B2B2B] text-xs sm:text-sm font-medium flex items-center gap-3 shadow-xs">
+            <span className="text-xl">📶</span>
+            <div>
+              <p className="font-bold text-[#C0392B]">
+                {t('dashboard.offlineNotice', "You're offline — showing saved information")}
+              </p>
+              <p className="text-xs text-[#6B6B6B]">
+                {pendingSyncCount > 0 
+                  ? `${pendingSyncCount} action saved locally — will sync when connection returns.`
+                  : 'All reminders, photos, and games are available offline.'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* 1. STATE-PERSONALIZED HORIZON HERO BANNER                */}
+        {/* ======================================================== */}
+        <div className="relative rounded-3xl overflow-hidden shadow-md border border-[#E5E0D8]">
+          {/* Scenic Landscape Background with Gradient Overlay */}
+          <div 
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url(${currentRegion.landscapeImage})` }}
+          />
+          <div className={`absolute inset-0 bg-gradient-to-r ${currentRegion.bannerGradient || 'from-[#0E382B]/90 via-[#1B4D3E]/85 to-[#0E382B]/90'} backdrop-blur-[1px]`} />
+          
+          {/* Content Over Banner */}
+          <div className="relative z-10 p-5 sm:p-8 text-white">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+              
+              <div className="flex flex-col sm:flex-row items-center sm:items-center text-center sm:text-left gap-4">
+                <div className="relative">
+                  {activePatient?.avatar ? (
+                    <img
+                      src={activePatient.avatar}
+                      alt={activePatient?.name || "Patient"}
+                      className="w-20 h-20 sm:w-22 sm:h-22 rounded-2xl object-cover border-3 border-amber-300 shadow-md"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-2xl bg-amber-800 text-white font-bold text-3xl flex items-center justify-center border-3 border-amber-300 shadow-md">
+                      {activePatient?.name?.charAt(0)?.toUpperCase() || 'P'}
+                    </div>
+                  )}
+                  <span className="absolute -bottom-1 -right-1 text-base bg-black/60 rounded-full px-1 border border-white/40 shadow-xs">
+                    {currentRegion.emblemEmoji}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-emerald-100 text-[11px] font-black uppercase tracking-wider border border-white/20 backdrop-blur-xs">
+                      {currentRegion.greetingNative}
+                    </span>
+                    <span className="text-xs font-semibold text-emerald-100/90 uppercase tracking-wider">
+                      {nowTime.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                  
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white">
+                    {greetingWord}, <span className="text-amber-300">{(activePatient?.name || 'Ramesh').split(' ')[0]}</span>
+                  </h1>
+
+                  <p className="text-xs sm:text-sm text-emerald-100/90 font-medium flex items-center justify-center sm:justify-start gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-amber-300" />
+                    <span>{currentRegion.prominentCity}</span>
+                    <span className="text-emerald-300/60">•</span>
+                    <span className="italic text-emerald-200/80">{currentRegion.tagline}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Cluster: Status Audio + Hometown Sounds */}
+              <div className="flex items-center justify-center sm:justify-end gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
+                
+                {/* Memory of Home Quick Launcher */}
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('manomitra_open_memory_modal'))}
+                  className="min-h-[50px] sm:min-h-[54px] px-4 py-2.5 rounded-2xl flex items-center justify-center gap-2 text-xs sm:text-sm font-black shadow-md bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 transition-all cursor-pointer active:scale-98 shrink-0 border border-amber-300"
+                  title="Play relaxing local nature sounds & stories"
+                >
+                  <Trees className="w-5 h-5 text-stone-950 shrink-0" />
+                  <span>{isHindi ? "घर की स्मृति" : "Memory of Home"}</span>
+                </button>
+
+                {/* Listen to Daily Status */}
+                <button
+                  type="button"
+                  onClick={handleStatusAudio}
+                  className={`min-h-[50px] sm:min-h-[54px] px-4 py-2.5 rounded-2xl flex items-center justify-center gap-2 text-xs sm:text-sm font-black shadow-md transition-all cursor-pointer active:scale-98 shrink-0 ${
+                    isPlayingAudio
+                      ? 'bg-amber-400 text-stone-900 ring-4 ring-amber-300/40 animate-pulse'
+                      : 'bg-white/15 hover:bg-white/25 text-white border border-white/25 backdrop-blur-xs'
+                  }`}
+                  title="Listen to daily status"
+                  aria-label="Listen to Status"
+                >
+                  <Volume2 className="w-5 h-5 shrink-0 text-amber-300" />
+                  <span>{isPlayingAudio ? (isHindi ? 'बोल रहे हैं...' : 'Speaking...') : (isHindi ? 'स्थिति सुनें' : 'Listen Status')}</span>
+                </button>
+
+              </div>
+
+            </div>
+
+            {isPlayingAudio && audioMessage && (
+              <div className="mt-4 p-3.5 bg-black/40 rounded-2xl text-xs sm:text-sm text-amber-200 font-bold text-center border border-amber-300/30 animate-in fade-in">
+                "{audioMessage}"
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ======================================================== */}
+        {/* 1.5 REGIONAL PROVERB & REASSURANCE CARD                  */}
+        {/* ======================================================== */}
+        <div className="bg-gradient-to-r from-[#FDFBF7] to-[#F5EFEB] rounded-2xl p-4 sm:p-5 border border-[#E5DFD7] shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#0E382B] text-amber-300 flex items-center justify-center text-xl shrink-0 shadow-xs">
+              {currentRegion.emblemEmoji}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm sm:text-base font-black text-[#0E382B]">
+                  {currentRegion.proverb}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-stone-600 font-medium">
+                {currentRegion.proverbTranslation}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('manomitra_open_memory_modal'))}
+              className="text-[11px] text-[#0E382B] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg bg-emerald-100/80 hover:bg-emerald-200 border border-emerald-300/60 cursor-pointer flex items-center gap-1 transition-colors"
+            >
+              <span>Nature Sounds</span>
+            </button>
+            <div className="text-[11px] text-stone-500 font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-lg bg-stone-100 border border-stone-200">
+              {currentRegion.textileMotif}
+            </div>
+          </div>
+        </div>
+
+        {/* ======================================================== */}
+        {/* 2. GAME OF THE DAY (DATE-SEEDED ROTATING CHALLENGE)      */}
+        {/* ======================================================== */}
+        {dailyFeaturedGame && (
+          isTodayGameDone ? (
+            /* COMPLETED TODAY'S GAME STATE */
+            <div className="bg-[#EDF7F2] rounded-3xl p-5 sm:p-8 border-2 border-[#A3D9C1] shadow-2xs space-y-4 sm:space-y-5 animate-in fade-in">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white text-[#1F6B4A] text-xs font-black uppercase tracking-wider border border-[#A3D9C1] shadow-2xs">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#1F6B4A]" />
+                  <span>{isHindi ? "आज का खेल पूर्ण" : "Today's Game Completed"}</span>
+                </span>
+
+                <span className="text-xs font-bold text-[#1F6B4A] flex items-center gap-1">
+                  <Flame className="w-3.5 h-3.5 fill-[#1F6B4A]" />
+                  <span>{dynamicStreakDays} {isHindi ? "दिन लगातार" : `${dynamicStreakDays} Day Streak`}</span>
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 sm:gap-6">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-5">
+                  <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-[#1F6B4A] text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Check className="w-9 h-9 stroke-[3]" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-xl sm:text-3xl font-black text-[#1F6B4A]">
+                      {isHindi ? "आज का खेल पूरा हुआ" : "Today's Exercise Completed"}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-stone-600 font-medium">
+                      {isHindi 
+                        ? `आपने आज का अभ्यास (${dailyFeaturedGame.hindiTitle || dailyFeaturedGame.title}) पूरा कर लिया है।` 
+                        : `You've completed today's exercise (${dailyFeaturedGame.title}).`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="w-full sm:w-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/patient/games')}
+                    className="w-full sm:w-auto min-h-[56px] px-8 py-4 rounded-2xl bg-[#1F6B4A] hover:bg-[#185339] text-white font-black text-base sm:text-lg flex items-center justify-center gap-2.5 shadow-xs transition-all active:scale-98 cursor-pointer shrink-0"
+                  >
+                    <BrainCircuit className="w-5 h-5" />
+                    <span>{isHindi ? "और खेलें" : "Explore Games"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* UNCOMPLETED / PENDING CHALLENGE STATE */
+            <div className="bg-white rounded-3xl p-5 sm:p-8 border-2 border-[#B5502E]/30 shadow-2xs space-y-4 sm:space-y-5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FDF6F0] text-[#B5502E] text-xs font-black uppercase tracking-wider border border-[#B5502E]/20">
+                  <Flame className="w-3.5 h-3.5 fill-[#B5502E]" />
+                  <span>{isHindi ? "आज की चुनौती" : "Today's Challenge"}</span>
+                </span>
+
+                <span className="text-xs font-bold text-[#6B6B6B]">
+                  {dynamicStreakDays} {isHindi ? "दिन लगातार" : "Day Streak"}
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 sm:gap-6">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-5">
+                  <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-[#FDF6F0] border border-[#B5502E]/20 flex items-center justify-center shrink-0 shadow-2xs">
+                    <GameIcon icon={dailyFeaturedGame.icon} className="w-9 h-9 text-[#B5502E]" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                      <h3 className="text-xl sm:text-3xl font-black text-[#2B2B2B]">
+                        {isHindi ? (dailyFeaturedGame.hindiTitle || dailyFeaturedGame.title) : dailyFeaturedGame.title}
+                      </h3>
+                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#FAF7F2] text-[#6B6B6B] border border-[#E5E0D8]">
+                        {isHindi ? (dailyFeaturedGame.hindiCategory || dailyFeaturedGame.category) : dailyFeaturedGame.category}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-[#6B6B6B] font-medium">
+                      {isHindi ? (dailyFeaturedGame.hindiDescription || dailyFeaturedGame.description) : dailyFeaturedGame.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="w-full sm:w-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = dailyFeaturedGame.path || dailyFeaturedGame.route || '/patient/games';
+                      navigate(target);
+                    }}
+                    className="w-full sm:w-auto min-h-[56px] px-8 py-4 rounded-2xl bg-[#B5502E] hover:bg-[#9E4224] text-white font-black text-base sm:text-lg flex items-center justify-center gap-2.5 shadow-xs transition-all active:scale-98 cursor-pointer shrink-0"
+                  >
+                    <Play className="w-5 h-5 fill-current" />
+                    <span>{isHindi ? "खेलें" : "Play Now"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        )}
+
+        {/* Auto-escalated Overdue Notification Alert Banner (Rule 1) */}
+        {escalatedOverdueCount > 0 && (
+          <div 
+            onClick={() => navigate('/patient/reminders')}
+            className="p-4 rounded-2xl bg-[#FDF2F2] border border-[#F5B7B1] text-[#2B2B2B] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs cursor-pointer hover:bg-rose-100 transition-colors animate-in fade-in"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#C0392B] text-white flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm font-bold text-[#C0392B]">
+                  {isHindi 
+                    ? `${escalatedOverdueCount} पूर्व निर्धारित कार्य बाकी हैं`
+                    : `${escalatedOverdueCount} earlier routine${escalatedOverdueCount > 1 ? 's' : ''} pending`}
+                </p>
+                <p className="text-[11px] sm:text-xs text-[#6B6B6B] font-medium">
+                  {isHindi 
+                    ? "शेड्यूल देखने के लिए टैप करें।" 
+                    : "Tap to review schedule."}
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-black text-[#C0392B] flex items-center gap-1 shrink-0 self-end sm:self-center">
+              <span>{isHindi ? "शेड्यूल देखें" : "View Reminders"}</span>
+              <ArrowRight className="w-4 h-4" />
+            </span>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* 3. THE CORE STATUS BANNER: "WHAT DO I DO RIGHT NOW?"      */}
+        {/* ======================================================== */}
+        {(() => {
+          const { routine, priority, escalatedCount } = primaryFocusRoutine;
+
+          // Case A: All Routines Completed
+          if (priority === 'all_completed') {
+            return (
+              <div 
+                key="all_routines_completed"
+                className="bg-[#EDF7F2] rounded-3xl p-5 sm:p-8 border-2 border-[#A3D9C1] shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-5 sm:gap-6 animate-in fade-in zoom-in-95 duration-300"
+              >
+                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-5">
+                  <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-[#1F6B4A] text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <CheckCircle2 className="w-9 h-9 stroke-[2.5]" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white text-[#1F6B4A] text-xs font-black uppercase tracking-wider border border-[#A3D9C1]">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>{isHindi ? "आज के सभी कार्य पूर्ण" : "All Routines Completed"}</span>
+                    </span>
+                    <h2 className="text-xl sm:text-3xl font-black text-[#2B2B2B]">
+                      {isHindi ? `सभी ${totalCount} दैनिक कार्य पूरे हुए` : `All ${totalCount} routines completed.`}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-[#6B6B6B] font-medium">
+                      {isHindi ? "आज के सभी दैनिक कार्य पूरे हो गए हैं।" : "No pending tasks remaining today."}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => navigate('/patient/reminders')}
+                  className="w-full sm:w-auto min-h-[56px] px-6 py-4 rounded-2xl bg-[#1F6B4A] hover:bg-[#18553B] text-white text-base sm:text-lg font-black shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 shrink-0"
+                >
+                  <span>{isHindi ? "शेड्यूल देखें" : "View Schedule"}</span>
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+              </div>
+            );
+          }
+
+          // Case B: All remaining uncompleted routines are 3+ hours overdue (escalated to alerts)
+          if (priority === 'all_escalated' || !routine) {
+            return (
+              <div 
+                key="all_escalated_state"
+                className="bg-white rounded-3xl p-5 sm:p-8 border-2 border-[#E5E0D8] shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-5 sm:gap-6 animate-in fade-in zoom-in-95 duration-300"
+              >
+                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-5">
+                  <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-[#EFF4FA] text-[#2C5AA0] flex items-center justify-center shrink-0 shadow-xs border border-[#2C5AA0]/20">
+                    <Clock className="w-9 h-9 stroke-[2.5]" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FAF7F2] text-[#6B6B6B] text-xs font-black uppercase tracking-wider border border-[#E5E0D8]">
+                      <span>{isHindi ? "कोई लंबित कार्य नहीं" : "No Pending Tasks"}</span>
+                    </span>
+                    <h2 className="text-xl sm:text-3xl font-black text-[#2B2B2B]">
+                      {isHindi ? "सभी कार्य अपडेट हैं।" : "You're all caught up."}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-[#6B6B6B] font-medium">
+                      {isHindi 
+                        ? `आपके पास ${escalatedCount || overdueCount} पूर्व निर्धारित कार्य शेड्यूल में उपलब्ध हैं।` 
+                        : `You have ${escalatedCount || overdueCount} past reminder${(escalatedCount || overdueCount) > 1 ? 's' : ''} in your schedule.`}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => navigate('/patient/reminders')}
+                  className="w-full sm:w-auto min-h-[56px] px-6 py-4 rounded-2xl bg-[#2C5AA0] hover:bg-[#224780] text-white text-base sm:text-lg font-black shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 shrink-0"
+                >
+                  <span>{isHindi ? "शेड्यूल खोलें" : "Review Reminders"}</span>
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+              </div>
+            );
+          }
+
+          const isOverdue = priority === 'overdue';
+          const isDueNow = priority === 'due_now';
+          const isCurrentCompleting = completingReminderId === (routine.id || routine._id);
+          const isActionable = routine.isActionable !== false; // Rule 3
+
+          return (
+            <div 
+              key={routine.id || routine._id || 'primary_focus'}
+              className={`rounded-3xl p-5 sm:p-8 border-2 shadow-sm transition-all duration-300 ease-out flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-5 sm:gap-6 animate-in fade-in slide-in-from-right-3 ${
+                isCurrentCompleting
+                  ? 'bg-[#EDF7F2] border-[#A3D9C1] scale-[0.99]'
+                  : isOverdue
+                  ? 'bg-[#FDF2F2] border-[#F5B7B1]'
+                  : isDueNow
+                  ? 'bg-[#EFF4FA] border-[#2C5AA0]'
+                  : 'bg-white border-[#E5E0D8]'
+              }`}
+            >
+              {/* Left Details */}
+              <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-5">
+                <div className={`w-16 h-16 sm:w-18 sm:h-18 rounded-2xl flex items-center justify-center shrink-0 shadow-xs transition-colors duration-300 ${
+                  isCurrentCompleting
+                    ? 'bg-[#1F6B4A] text-white'
+                    : isOverdue
+                    ? 'bg-[#C0392B] text-white'
+                    : isDueNow
+                    ? 'bg-[#2C5AA0] text-white'
+                    : 'bg-stone-100 text-[#2C5AA0]'
+                }`}>
+                  {isCurrentCompleting ? (
+                    <Check className="w-9 h-9 stroke-[3] animate-in zoom-in-50" />
+                  ) : (
+                    getReminderIcon(routine.type, "w-9 h-9")
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                    {isCurrentCompleting ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1F6B4A] text-white text-xs font-black uppercase tracking-wider animate-in fade-in">
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>{isHindi ? "सफलतापूर्वक पूर्ण!" : "Completed!"}</span>
+                      </span>
+                    ) : isOverdue ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C0392B] text-white text-xs font-black uppercase tracking-wider">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>{isHindi ? "समय बीत चुका है" : "Action Overdue"}</span>
+                      </span>
+                    ) : isDueNow ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#2C5AA0] text-white text-xs font-black uppercase tracking-wider">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>{isHindi ? "अभी करने योग्य" : "Due Right Now"}</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-100 text-[#6B6B6B] text-xs font-bold border border-[#E5E0D8]">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>{isHindi ? "अगला निर्धारित कार्य" : "Next Scheduled Routine"}</span>
+                      </span>
+                    )}
+                    <span className="text-xs font-black text-[#6B6B6B]">
+                      {routine.formattedTime}
+                    </span>
+                  </div>
+
+                  <h2 className="text-xl sm:text-3xl font-black text-[#2B2B2B]">
+                    {isHindi ? (routine.hindiTitle || routine.title) : routine.title}
+                  </h2>
+
+                  <p className="text-xs sm:text-sm text-[#6B6B6B] font-medium">
+                    {isHindi ? (routine.hindiDetail || routine.detail || routine.title) : (routine.detail || routine.title)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Right: Large 56px Action Button (Rule 3: Disabled before scheduled time) */}
+              <div className="w-full sm:w-auto shrink-0">
+                {isCurrentCompleting ? (
+                  <button
+                    type="button"
+                    disabled={true}
+                    className="w-full sm:w-auto min-h-[56px] px-8 py-4 rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-2.5 bg-[#1F6B4A] text-white cursor-default shadow-xs"
+                  >
+                    <Check className="w-5 h-5 stroke-[3]" />
+                    <span>{isHindi ? "पूर्ण हुआ" : "Completed"}</span>
+                  </button>
+                ) : !isActionable ? (
+                  <button
+                    type="button"
+                    disabled={true}
+                    title={isHindi ? `${routine.formattedTime} पर सक्रिय होगा` : `Will become available at ${routine.formattedTime}`}
+                    className="w-full sm:w-auto min-h-[56px] px-6 sm:px-8 py-4 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 bg-stone-100 text-stone-400 border border-stone-200 cursor-not-allowed shadow-none select-none transition-all"
+                  >
+                    <Clock className="w-4.5 h-4.5 text-stone-400" />
+                    <span>
+                      {isHindi 
+                        ? `${routine.formattedTime} पर उपलब्ध` 
+                        : `Available at ${routine.formattedTime}`}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleReminderDone(routine.id || routine._id, routine.title)}
+                    className={`w-full sm:w-auto min-h-[56px] px-8 py-4 rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-2.5 shadow-xs transition-all cursor-pointer active:scale-98 ${
+                      isOverdue
+                        ? 'bg-[#C0392B] hover:bg-[#A93226] text-white'
+                        : isDueNow
+                        ? 'bg-[#2C5AA0] hover:bg-[#224780] text-white'
+                        : 'bg-[#1F6B4A] hover:bg-[#18553B] text-white'
+                    }`}
+                  >
+                    <Check className="w-5 h-5 stroke-[3]" />
+                    <span>{isHindi ? "पूर्ण चिह्नित करें" : "Mark Done"}</span>
+                  </button>
+                )}
+              </div>
+
+            </div>
+          );
+        })()}
+
+        {/* ======================================================== */}
+        {/* 4. FOUR LARGE QUICK DESTINATION TILES                    */}
+        {/* ======================================================== */}
+        <div>
+          <h2 className="text-lg font-black text-[#2B2B2B] mb-3.5">
+            {isHindi ? "दैनिक सुविधाएं" : "Explore"}
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-6">
+            
+            {/* Tile 1: Daily Reminders */}
+            <div
+              onClick={() => navigate('/patient/reminders')}
+              className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-[#E5E0D8] hover:border-[#2C5AA0] shadow-2xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-4"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#EFF4FA] border border-[#2C5AA0]/20 text-[#2C5AA0] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Bell className="w-7 h-7 sm:w-8 sm:h-8" />
+                </div>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <span className="text-xs font-black px-3 py-1 rounded-full bg-[#EDF7F2] text-[#1F6B4A] border border-[#A3D9C1]">
+                    {completedCount} / {totalCount} {isHindi ? "पूर्ण" : "Done"}
+                  </span>
+                  {overdueCount > 0 && (
+                    <span className="text-xs font-black px-2.5 py-1 rounded-full bg-[#FDF2F2] text-[#C0392B] border border-[#F5B7B1] animate-in fade-in">
+                      {overdueCount} {isHindi ? "बाकी" : "overdue"}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xl sm:text-2xl font-black text-[#2B2B2B] group-hover:text-[#2C5AA0] transition-colors">
+                  {isHindi ? "दैनिक अनुस्मारक" : "Daily Reminders"}
+                </h3>
+                <p className="text-xs sm:text-sm text-[#6B6B6B] font-medium mt-1">
+                  {isHindi ? "दवा, भोजन और दैनिक शेड्यूल" : "Medicine, meals, and daily schedule"}
+                </p>
+              </div>
+
+              <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-xs sm:text-sm font-black text-[#2C5AA0]">
+                <span>{isHindi ? "शेड्यूल खोलें" : "Open Schedule"}</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+
+            {/* Tile 2: Brain Games */}
+            <div
+              onClick={() => navigate('/patient/games')}
+              className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-[#E5E0D8] hover:border-[#B5502E] shadow-2xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-4"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#FDF6F0] border border-[#B5502E]/20 text-[#B5502E] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <BrainCircuit className="w-7 h-7 sm:w-8 sm:h-8" />
+                </div>
+                <span className="text-xs font-black px-3 py-1 rounded-full bg-[#FDF6F0] text-[#B5502E] border border-[#B5502E]/20 flex items-center gap-1">
+                  <Flame className="w-3.5 h-3.5" />
+                  <span>{dynamicStreakDays} {isHindi ? "दिन लगातार" : "Day Streak"}</span>
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-xl sm:text-2xl font-black text-[#2B2B2B] group-hover:text-[#B5502E] transition-colors">
+                  {isHindi ? "दिमागी खेल" : "Brain Games"}
+                </h3>
+                <p className="text-xs sm:text-sm text-[#6B6B6B] font-medium mt-1">
+                  {isHindi ? "दैनिक स्मृति अभ्यास" : "Daily memory exercises"}
+                </p>
+              </div>
+
+              <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-xs sm:text-sm font-black text-[#B5502E]">
+                <span>{isHindi ? "खेलें" : "Play Games"}</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+
+            {/* Tile 3: Family Photos */}
+            <div
+              onClick={() => navigate('/patient/family')}
+              className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-[#E5E0D8] hover:border-rose-300 shadow-2xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-4"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Heart className="w-7 h-7 sm:w-8 sm:h-8 fill-rose-100" />
+                </div>
+                <span className="text-xs font-black px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                  Memory Vault
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-xl sm:text-2xl font-black text-[#2B2B2B] group-hover:text-rose-600 transition-colors">
+                  {isHindi ? "पारिवारिक यादें और तस्वीरें" : "Family Memories & Photos"}
+                </h3>
+                <p className="text-xs sm:text-sm text-[#6B6B6B] font-medium mt-1">
+                  {isHindi ? "परिवार की तस्वीरें और आवाज के साथ यादें" : "Photos with voice notes"}
+                </p>
+              </div>
+
+              <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-xs sm:text-sm font-black text-rose-600">
+                <span>{isHindi ? "एल्बम देखें" : "View Album"}</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+
+            {/* Tile 4: Profile & Care */}
+            <div
+              onClick={() => navigate('/patient/profile')}
+              className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-[#E5E0D8] hover:border-emerald-300 shadow-2xs hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between gap-4"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#EDF7F2] border border-[#1F6B4A]/20 text-[#1F6B4A] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <User className="w-7 h-7 sm:w-8 sm:h-8" />
+                </div>
+                <span className="text-xs font-black px-3 py-1 rounded-full bg-[#EDF7F2] text-[#1F6B4A] border border-[#A3D9C1]">
+                  Care Team
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-xl sm:text-2xl font-black text-[#2B2B2B] group-hover:text-[#1F6B4A] transition-colors">
+                  {isHindi ? "मेरी प्रोफाइल और संपर्क" : "Profile & Care Contacts"}
+                </h3>
+                <p className="text-xs sm:text-sm text-[#6B6B6B] font-medium mt-1">
+                  {isHindi ? "डॉक्टर संपर्क और आपातकालीन सेटिंग्स" : "Emergency contacts and settings"}
+                </p>
+              </div>
+
+              <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-xs sm:text-sm font-black text-[#1F6B4A]">
+                <span>{isHindi ? "प्रोफाइल देखें" : "View Profile"}</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        </div>
+    </PatientNavShell>
+  );
+}

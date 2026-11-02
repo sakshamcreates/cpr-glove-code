@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#be185d" />
+  <meta name="description" content="Manomitra is offline. Your care routine and cognitive exercises are cached and available." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Manomitra" />
+  <title>Manomitra — You're Offline</title>
+  <style>
+    /* ── Critical Inline CSS — No external deps during offline ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --brand:       #be185d;
+      --brand-light: #fce7f3;
+      --brand-dark:  #9d174d;
+      --text:        #1e293b;
+      --text-soft:   #64748b;
+      --surface:     #ffffff;
+      --surface-2:   #f8fafc;
+      --border:      #e2e8f0;
+      --success:     #22c55e;
+      --warning:     #eab308;
+      --radius-lg:   0.75rem;
+      --radius-xl:   1rem;
+      --radius-full: 9999px;
+      --shadow-md:   0 4px 6px -1px rgb(0 0 0 / 0.10), 0 2px 4px -2px rgb(0 0 0 / 0.10);
+      --shadow-xl:   0 20px 25px -5px rgb(0 0 0 / 0.10), 0 8px 10px -6px rgb(0 0 0 / 0.10);
+    }
+
+    html {
+      font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      -webkit-text-size-adjust: 100%;
+      background: var(--surface-2);
+      color: var(--text);
+    }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+      background: linear-gradient(160deg, #fdf2f8 0%, #f8fafc 50%, #fce7f3 100%);
+    }
+
+    .shell {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    /* ── Brand Logo Area ── */
+    .logo-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      text-align: center;
+    }
+
+    .logo-icon {
+      width: 5rem;
+      height: 5rem;
+      filter: drop-shadow(0 4px 8px rgb(190 24 93 / 0.3));
+    }
+
+    .logo-title {
+      font-size: 1.875rem;
+      font-weight: 800;
+      color: var(--brand-dark);
+      letter-spacing: -0.025em;
+    }
+
+    .logo-sub {
+      font-size: 0.75rem;
+      color: var(--text-soft);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    /* ── Offline Status Card ── */
+    .offline-card {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 2rem;
+      box-shadow: var(--shadow-xl);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.25rem;
+      text-align: center;
+    }
+
+    .offline-icon-wrap {
+      width: 4rem;
+      height: 4rem;
+      background: #fff7ed;
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #fed7aa;
+    }
+
+    .offline-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .offline-body {
+      font-size: 0.9375rem;
+      color: var(--text-soft);
+      line-height: 1.6;
+    }
+
+    /* ── Cached Features Grid ── */
+    .cached-grid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    .cached-item {
+      background: var(--brand-light);
+      border: 1px solid #fbcfe8;
+      border-radius: var(--radius-lg);
+      padding: 0.875rem;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.375rem;
+    }
+
+    .cached-item__icon { font-size: 1.5rem; line-height: 1; }
+    .cached-item__label {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--brand-dark);
+    }
+    .cached-item__note {
+      font-size: 0.6875rem;
+      color: var(--text-soft);
+      line-height: 1.4;
+    }
+
+    /* ── Retry Button ── */
+    .btn-retry {
+      width: 100%;
+      min-height: 3.25rem;
+      background: linear-gradient(135deg, #db2777, #9d174d);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-full);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: transform 150ms ease, box-shadow 150ms ease;
+      box-shadow: 0 4px 14px 0 rgb(219 39 119 / 0.4);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    .btn-retry:hover { transform: translateY(-1px); box-shadow: 0 6px 18px 0 rgb(219 39 119 / 0.45); }
+    .btn-retry:active { transform: scale(0.97); }
+
+    /* ── Network Status Pill ── */
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.375rem 1rem;
+      border-radius: var(--radius-full);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .status-pill--offline {
+      background: #fff7ed;
+      color: #c2410c;
+      border: 1px solid #fed7aa;
+    }
+    .status-pill--online  {
+      background: #dcfce7;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot--offline {
+      background: #f97316;
+      animation: offlinePulse 2s ease-in-out infinite;
+    }
+    .status-dot--online  { background: var(--success); }
+
+    @keyframes offlinePulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* ── WhatsApp Fallback Banner ── */
+    .whatsapp-banner {
+      width: 100%;
+      background: #dcfce7;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-lg);
+      padding: 1rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+    }
+
+    .whatsapp-banner__icon { flex-shrink: 0; }
+    .whatsapp-banner__text { flex: 1; }
+    .whatsapp-banner__title {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: #14532d;
+      margin-bottom: 0.25rem;
+    }
+    .whatsapp-banner__body {
+      font-size: 0.75rem;
+      color: #166534;
+      line-height: 1.5;
+    }
+    .whatsapp-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #15803d;
+      text-decoration: none;
+    }
+    .whatsapp-link:hover { text-decoration: underline; }
+
+    /* ── Footer ── */
+    .offline-footer {
+      text-align: center;
+      font-size: 0.6875rem;
+      color: var(--text-soft);
+      line-height: 1.6;
+    }
+    .offline-footer a {
+      color: var(--brand);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .offline-footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <main class="shell" role="main">
+
+    <!-- ── Brand Logo ─────────────────────────────────────────────── -->
+    <div class="logo-area">
+      <svg class="logo-icon" viewBox="0 0 80 80" fill="none" aria-hidden="true" focusable="false">
+        <!-- Stylised lotus / memory flower icon -->
+        <circle cx="40" cy="40" r="38" fill="#fdf2f8" stroke="#fbcfe8" stroke-width="2"/>
+        <!-- Petals -->
+        <ellipse cx="40" cy="20" rx="7" ry="13" fill="#f9a8d4" transform="rotate(0 40 40)"/>
+        <ellipse cx="40" cy="20" rx="7" ry="13" fill="#f472b6" transform="rotate(45 40 40)"/>
+        <ellipse cx="40" cy="20" rx="7" ry="13" fill="#f9a8d4" transform="rotate(90 40 40)"/>
+        <ellipse cx="40" cy="20" rx="7" ry="13" fill="#f472b6" transform="rotate(135 40 40)"/>
+        <ellipse cx="40" cy="20" rx="7" ry="13" fill="#f9a8d4" transform="rotate(180 40 40)"/>
+        <ellipse cx="40" cy="20" rx="7" ry="13" fill="#f472b6" transform="rotate(225 40 40)"/>
+        <ellipse cx="40" cy="20" rx="7" ry="13" fill="#f9a8d4" transform="rotate(270 40 40)"/>
+        <ellipse cx="40" cy="20" rx="7" ry="13" fill="#f472b6" transform="rotate(315 40 40)"/>
+        <!-- Centre -->
+        <circle cx="40" cy="40" r="10" fill="#be185d"/>
+        <circle cx="40" cy="40" r="5"  fill="#fdf2f8"/>
+      </svg>
+      <h1 class="logo-title">🌸 Manomitra</h1>
+      <p class="logo-sub">স্মৃতি · स्मृति · AI Cognitive Care</p>
+    </div>
+
+    <!-- ── Status Pill ─────────────────────────────────────────────── -->
+    <div class="status-pill status-pill--offline" id="status-pill" role="status" aria-live="polite">
+      <span class="status-dot status-dot--offline" id="status-dot"></span>
+      <span id="status-text">No Internet Connection</span>
+    </div>
+
+    <!-- ── Main Offline Card ────────────────────────────────────────── -->
+    <section class="offline-card" aria-label="Offline status information">
+
+      <div class="offline-icon-wrap" aria-hidden="true">
+        <!-- WiFi-off SVG icon -->
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="1" y1="1" x2="23" y2="23"/>
+          <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+          <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+          <path d="M10.71 5.05A16 16 0 0 1 22.56 9"/>
+          <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+          <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+          <circle cx="12" cy="20" r="1" fill="#f97316" stroke="none"/>
+        </svg>
+      </div>
+
+      <h2 class="offline-title">You're currently offline</h2>
+      <p class="offline-body">
+        Don't worry — <strong>Manomitra works offline</strong>.<br/>
+        Your daily routines, cognitive games, and medication reminders are all saved on this device.
+      </p>
+
+      <!-- ── Cached Features ── -->
+      <div class="cached-grid" role="list" aria-label="Features available offline">
+
+        <div class="cached-item" role="listitem">
+          <span class="cached-item__icon" aria-hidden="true">📅</span>
+          <span class="cached-item__label">Daily Routines</span>
+          <span class="cached-item__note">Your schedule is cached and ready.</span>
+        </div>
+
+        <div class="cached-item" role="listitem">
+          <span class="cached-item__icon" aria-hidden="true">🎮</span>
+          <span class="cached-item__label">Cognitive Games</span>
+          <span class="cached-item__note">All 5 games work without internet.</span>
+        </div>
+
+        <div class="cached-item" role="listitem">
+          <span class="cached-item__icon" aria-hidden="true">💊</span>
+          <span class="cached-item__label">Reminders</span>
+          <span class="cached-item__note">Medication alerts still work locally.</span>
+        </div>
+
+        <div class="cached-item" role="listitem">
+          <span class="cached-item__icon" aria-hidden="true">📸</span>
+          <span class="cached-item__label">Memory Bank</span>
+          <span class="cached-item__note">Your photos are saved on device.</span>
+        </div>
+
+        <div class="cached-item" role="listitem">
+          <span class="cached-item__icon" aria-hidden="true">🔊</span>
+          <span class="cached-item__label">Voice Guidance</span>
+          <span class="cached-item__note">Audio prompts work via device TTS.</span>
+        </div>
+
+        <div class="cached-item" role="listitem">
+          <span class="cached-item__icon" aria-hidden="true">🔄</span>
+          <span class="cached-item__label">Auto Sync</span>
+          <span class="cached-item__note">Data syncs when you're back online.</span>
+        </div>
+
+      </div>
+
+      <!-- ── Retry Button ── -->
+      <button class="btn-retry" id="retry-btn" onclick="retryConnection()" type="button" aria-label="Try reconnecting to Manomitra">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="1 4 1 10 7 10"/>
+          <path d="M3.51 15a9 9 0 1 0 .49-3.87"/>
+        </svg>
+        Try Again
+      </button>
+
+    </section>
+
+    <!-- ── WhatsApp Fallback ─────────────────────────────────────────── -->
+    <div class="whatsapp-banner" role="complementary" aria-label="WhatsApp alternative">
+      <div class="whatsapp-banner__icon" aria-hidden="true">
+        <!-- WhatsApp icon SVG -->
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+          <circle cx="18" cy="18" r="18" fill="#25D366"/>
+          <path d="M26.3 9.6A11.6 11.6 0 0 0 7.1 23l-1.5 5.5 5.6-1.5A11.6 11.6 0 0 0 26.3 9.6zm-8.3 17.9a9.7 9.7 0 0 1-4.9-1.3l-.4-.2-3.3.9.9-3.3-.2-.3a9.7 9.7 0 1 1 7.9 3.9zm5.3-7.3c-.3-.1-1.7-.9-2-1-.3-.1-.5-.1-.7.1-.2.3-.8 1-.9 1.2-.2.2-.3.2-.6.1a7.6 7.6 0 0 1-2.2-1.4 8.4 8.4 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.5-.5.2-.4v-.4l-.9-2.1c-.2-.5-.5-.4-.7-.4H14c-.2 0-.5.1-.7.3-.3.3-1 1-1 2.4s1 2.8 1.2 3c.2.2 2.1 3.2 5 4.5.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 2-1.4.2-.6.2-1.2.1-1.3l-.6-.3z" fill="white"/>
+        </svg>
+      </div>
+      <div class="whatsapp-banner__text">
+        <p class="whatsapp-banner__title">Need urgent help? Use WhatsApp</p>
+        <p class="whatsapp-banner__body">
+          Manomitra's WhatsApp companion works on any network, including 2G.
+          Your caregiver can check on you through the bot even when the app is offline.
+        </p>
+        <a href="https://wa.me/15556680031?text=Hi%20Manomitra" class="whatsapp-link" target="_blank" rel="noopener noreferrer" aria-label="Open Manomitra WhatsApp bot">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.6 6.3A8.5 8.5 0 0 0 3.5 16.8L2 22l5.4-1.4a8.5 8.5 0 0 0 10-13.3zm-5.6 13a7 7 0 0 1-3.6-1l-.3-.2-2.4.6.7-2.4-.2-.3A7 7 0 1 1 12 19.3z"/></svg>
+          Open WhatsApp Bot →
+        </a>
+      </div>
+    </div>
+
+    <!-- ── Reassurance Text ─────────────────────────────────────────── -->
+    <p class="offline-footer">
+      Manomitra is an <strong>offline-first PWA</strong>. All your data is safe.<br/>
+      Session data will sync automatically when connectivity is restored.<br/><br/>
+      <a href="https://manomitra-puce.vercel.app" target="_blank" rel="noopener">manomitra-puce.vercel.app</a>
+      &nbsp;·&nbsp;
+      <a href="https://wa.me/15556680031" target="_blank" rel="noopener">WhatsApp Support</a>
+    </p>
+
+  </main>
+
+  <script>
+    /* Retry — navigate back to app root */
+    function retryConnection() {
+      const btn = document.getElementById('retry-btn');
+      btn.disabled = true;
+      btn.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="animation: spin 1s linear infinite;">
+          <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+        </svg>
+        Connecting…
+      `;
+      setTimeout(() => { window.location.href = '/'; }, 800);
+    }
+
+    /* Update status pill when connectivity changes */
+    function updateStatus() {
+      const pill = document.getElementById('status-pill');
+      const dot  = document.getElementById('status-dot');
+      const txt  = document.getElementById('status-text');
+      if (navigator.onLine) {
+        pill.className = 'status-pill status-pill--online';
+        dot.className  = 'status-dot status-dot--online';
+        txt.textContent = 'Connection Restored — Redirecting…';
+        setTimeout(() => { window.location.href = '/'; }, 1200);
+      } else {
+        pill.className = 'status-pill status-pill--offline';
+        dot.className  = 'status-dot status-dot--offline';
+        txt.textContent = 'No Internet Connection';
+      }
+    }
+
+    window.addEventListener('online',  updateStatus);
+    window.addEventListener('offline', updateStatus);
+
+    /* Check on load */
+    if (navigator.onLine) { updateStatus(); }
+
+    /* Inline spin keyframe for retry spinner */
+    const style = document.createElement('style');
+    style.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+    document.head.appendChild(style);
+  </script>
+</body>
+</html>

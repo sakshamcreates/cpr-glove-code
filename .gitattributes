@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .gitattributes — GitHub Linguist overrides for Manomitra
+# Prevents auto-generated, vendored, and build artefacts from inflating the
+# JavaScript percentage in GitHub's language bar.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Vendored / third-party ────────────────────────────────────────────────────
+node_modules/*          linguist-vendored
+frontend/node_modules/* linguist-vendored
+backend/node_modules/*  linguist-vendored
+
+# ── Build / dist output ───────────────────────────────────────────────────────
+dist/*                  linguist-generated
+build/*                 linguist-generated
+frontend/dist/*         linguist-generated
+frontend/build/*        linguist-generated
+.vite/*                 linguist-generated
+
+# ── Lock files & generated manifests ─────────────────────────────────────────
+package-lock.json       linguist-generated
+frontend/package-lock.json linguist-generated
+backend/package-lock.json  linguist-generated
+yarn.lock               linguist-generated
+pnpm-lock.yaml          linguist-generated
+
+# ── Documentation assets (not code) ──────────────────────────────────────────
+docs/*                  linguist-documentation
+
+# ── Config / infra files — count but not as app language ─────────────────────
+*.yaml                  linguist-detectable
+*.yml                   linguist-detectable
+
+# ── Explicitly detectable non-JS source ──────────────────────────────────────
+*.py                    linguist-detectable
+*.sh                    linguist-detectable
+*.md                    linguist-documentation

@@ -1,0 +1,12 @@
+{
+  "name": "manomitra",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "cd backend && npm start"
+  },
+  "dependencies": {
+    "@google/genai": "^2.19.0",
+    "twilio": "^6.1.0"
+  }
+}

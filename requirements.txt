@@ -1,0 +1,9 @@
+# Manomitra — Python Utility Dependencies
+# ======================================
+# Install with: pip install -r requirements.txt
+#
+# Used by:
+#   ml_bridge.py — ML Engine connectivity bridge & testing utility
+
+requests>=2.31.0
+python-dotenv>=1.0.0
