@@ -83,22 +83,7 @@ npm run dev
 # open the Vite URL, use the demo profiles shown on the login screen
 ```
 
-## Run the full demo (needs MongoDB)
 
-```bash
-# 1. ML engine as above, on :8000
-# 2. Backend
-cd backend
-npm install
-cp .env.example .env   # then fill MONGO_URI + JWT_SECRET (+ ML_SERVICE_URL=http://localhost:8000)
-npm run seed           # WARNING: seed.js wipes all collections first, then creates demo data
-npm start              # :5000, /health and /api/health
-# 3. Frontend
-cd ../frontend
-npm install
-# set VITE_API_BASE_URL=http://localhost:5000 in frontend/.env if needed
-npm run dev
-```
 
 Deploy notes: `render.yaml` deploys the Node backend (rootDir `backend`), `vercel.json` builds `frontend/` to `frontend/dist`. Set the same env vars in the Render/Vercel dashboards — never commit `.env` files.
 
