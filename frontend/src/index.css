@@ -41,11 +41,6 @@
   scrollbar-width: none;
 }
 
-/* Animations */
-@keyframes pulse-gentle {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
 
 .animate-pulse-gentle {
   animation: pulse-gentle 2.5s ease-in-out infinite;
