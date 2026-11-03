@@ -51,7 +51,11 @@
   animation: pulse-gentle 2.5s ease-in-out infinite;
 }
 
-
+/* Sound wave animation for audio playback */
+@keyframes wave-bar {
+  0%, 100% { height: 6px; }
+  50% { height: 22px; }
+}
 
 .animate-wave-1 { animation: wave-bar 0.9s ease-in-out infinite; }
 .animate-wave-2 { animation: wave-bar 0.9s ease-in-out 0.2s infinite; }
